@@ -21,11 +21,22 @@ applications.
 
 """
 import os
+import typing
 import yaml
 from forest.export import export
 
 
 __all__ = []
+
+
+class DriverSpec(typing.NamedTuple):
+    name: str
+    settings: dict = {}
+
+
+class DatasetSpec(typing.NamedTuple):
+    label: str
+    driver: DriverSpec
 
 
 class Config(object):
@@ -50,6 +61,22 @@ class Config(object):
         return "{}({})".format(
                 self.__class__.__name__,
                 self.data)
+
+    @property
+    def specs(self):
+        return self._specs(self.data)
+
+    @staticmethod
+    def _specs(data):
+        if "datasets" not in data:
+            return []
+        datasets = data["datasets"]
+        labels = [ds["label"] for ds in datasets]
+        drivers = [ds["driver"] for ds in datasets]
+        return [
+                DatasetSpec(label,
+                    DriverSpec(driver["name"], driver["settings"]))
+                for label, driver in zip(labels, drivers)]
 
     @property
     def patterns(self):

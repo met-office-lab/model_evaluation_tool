@@ -35,6 +35,8 @@ def main(argv=None):
     else:
         config = cfg.load_config(args.config_file)
 
+    print(config.specs)
+
     database = None
     if args.database is not None:
         if args.database != ':memory:':
