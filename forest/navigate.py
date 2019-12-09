@@ -29,38 +29,34 @@ class Navigator:
         # group would have a `pattern`.
         # e.g.
         # self._navigators = {group.label: group.navigator for group in ...}
-        self._navigators = {group.pattern: self._from_group(group)
+        self._navigators = {group.label: self._from_group(group)
                            for group in config.file_groups}
 
     @classmethod
     def _from_group(cls, group):
         if group.locator == 'database':
-            navigator = db.get_database(group.database_path)
+            database = db.get_database(group.database_path)
+            glob_patterns = {group.label: group.pattern}
+            navigator = db.Navigator(database, glob_patterns)
         else:
-            paths = cls._expand_paths(group.pattern)
-            navigator = FileSystemNavigator.from_file_type(paths,
-                                                           group.file_type)
+            navigator = FileSystemNavigator._from_group(group)
         return navigator
 
-    @classmethod
-    def _expand_paths(cls, pattern):
-        return glob.glob(os.path.expanduser(pattern))
+    def variables(self, label):
+        navigator = self._navigators[label]
+        return navigator.variables(label)
 
-    def variables(self, pattern):
-        navigator = self._navigators[pattern]
-        return navigator.variables(pattern)
+    def initial_times(self, label, variable=None):
+        navigator = self._navigators[label]
+        return navigator.initial_times(label, variable=variable)
 
-    def initial_times(self, pattern, variable=None):
-        navigator = self._navigators[pattern]
-        return navigator.initial_times(pattern, variable=variable)
+    def valid_times(self, label, variable, initial_time):
+        navigator = self._navigators[label]
+        return navigator.valid_times(label, variable, initial_time)
 
-    def valid_times(self, pattern, variable, initial_time):
-        navigator = self._navigators[pattern]
-        return navigator.valid_times(pattern, variable, initial_time)
-
-    def pressures(self, pattern, variable, initial_time):
-        navigator = self._navigators[pattern]
-        return navigator.pressures(pattern, variable, initial_time)
+    def pressures(self, label, variable, initial_time):
+        navigator = self._navigators[label]
+        return navigator.pressures(label, variable, initial_time)
 
 
 class FileSystemNavigator:
@@ -74,6 +70,11 @@ class FileSystemNavigator:
         if coordinates is None:
             coordinates = unified_model.Coordinates()
         self.coordinates = coordinates
+
+    @classmethod
+    def _from_group(cls, group):
+        paths = cls._expand_paths(group.pattern)
+        return cls.from_file_type(paths, group.file_type)
 
     @classmethod
     def from_file_type(cls, paths, file_type):
@@ -95,6 +96,10 @@ class FileSystemNavigator:
         else:
             raise Exception("Unrecognised file type: '{}'".format(file_type))
         return cls(paths, coordinates)
+
+    @classmethod
+    def _expand_paths(cls, pattern):
+        return glob.glob(os.path.expanduser(pattern))
 
     def variables(self, pattern):
         paths = fnmatch.filter(self.paths, pattern)

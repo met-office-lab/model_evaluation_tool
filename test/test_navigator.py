@@ -11,15 +11,15 @@ import forest.navigate as navigate
 @patch('forest.navigate.Navigator._from_group')
 def test_Navigator_init(from_group):
     from_group.side_effect = [sentinel.nav1, sentinel.nav2]
-    group1 = Mock(pattern='pattern1')
-    group2 = Mock(pattern='pattern2')
+    group1 = Mock(label='label1')
+    group2 = Mock(label='label2')
     config = Mock(file_groups=[group1, group2])
 
     navigator = navigate.Navigator(config)
 
     assert from_group.mock_calls == [call(group1), call(group2)]
-    assert navigator._navigators == {'pattern1': sentinel.nav1,
-                                     'pattern2': sentinel.nav2}
+    assert navigator._navigators == {'label1': sentinel.nav1,
+                                     'label2': sentinel.nav2}
 
 
 @patch('forest.db.get_database')
@@ -30,18 +30,18 @@ def test_Navigator_from_group__use_database(get_database):
     navigator = navigate.Navigator._from_group(group)
 
     get_database.assert_called_once_with(sentinel.database_path)
-    assert navigator == sentinel.database
+    assert navigator.database == sentinel.database
 
 
 @patch('forest.navigate.FileSystemNavigator.from_file_type')
-@patch('forest.navigate.Navigator._expand_paths')
+@patch('forest.navigate.FileSystemNavigator._expand_paths')
 def test_Navigator_from_group__use_paths(expand_paths, from_file_type):
     expand_paths.return_value = sentinel.paths
     from_file_type.return_value = sentinel.navigator
     group = Mock(locator='not-a-database',
                  pattern=sentinel.pattern, file_type=sentinel.file_type)
 
-    navigator = navigate.Navigator._from_group(group)
+    navigator = navigate.FileSystemNavigator._from_group(group)
 
     expand_paths.assert_called_once_with(sentinel.pattern)
     from_file_type.assert_called_once_with(sentinel.paths, sentinel.file_type)
@@ -54,7 +54,7 @@ def test_Navigator_expand_paths(expanduser, glob):
     expanduser.return_value = sentinel.expanded
     glob.return_value = sentinel.paths
 
-    paths = navigate.Navigator._expand_paths('my-pattern')
+    paths = navigate.FileSystemNavigator._expand_paths('my-pattern')
 
     expanduser.assert_called_once_with('my-pattern')
     glob.assert_called_once_with(sentinel.expanded)

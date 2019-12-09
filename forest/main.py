@@ -9,6 +9,7 @@ from forest import (
         satellite,
         series,
         data,
+        dataset,
         load,
         view,
         images,
@@ -251,16 +252,17 @@ def main(argv=None):
 
     # Pre-select menu choices (if any)
     initial_state = {}
-    for _, pattern in config.patterns:
-        initial_state = db.initial_state(navigator, pattern=pattern)
+    for label, _ in config.patterns:
+        initial_state = db.initial_state(navigator, label)
         break
 
     middlewares = [
         db.Log(verbose=True),
         keys.navigate,
+        dataset.middleware,
         db.InverseCoordinate("pressure"),
         db.next_previous,
-        db.Controls(navigator),
+        db.Middleware(navigator),
         db.Converter({
             "valid_times": db.stamps,
             "inital_times": db.stamps
@@ -270,6 +272,7 @@ def main(argv=None):
     store = redux.Store(
         redux.combine_reducers(
             db.reducer,
+            dataset.reducer,
             series.reducer,
             colors.reducer),
         initial_state=initial_state,
@@ -290,6 +293,11 @@ def main(argv=None):
     user_limits = colors.UserLimits()
     user_limits.connect(store)
 
+    # Connect dataset user interface
+    dataset_ui = dataset.DatasetUI()
+    dataset_ui.subscribe(store.dispatch)
+    store.subscribe(dataset_ui.render)
+
     # Connect navigation controls
     controls = db.ControlView()
     controls.subscribe(store.dispatch)
@@ -308,10 +316,18 @@ def main(argv=None):
     # Set top-level navigation
     store.dispatch(db.set_value("patterns", config.patterns))
 
+    # Set initial label/labels
+    labels = [label for label, _ in config.patterns]
+    store.dispatch(dataset.set_labels(labels))
+    if len(labels) > 0:
+        label = labels[0]
+        store.dispatch(dataset.set_label(label))
+
     tabs = bokeh.models.Tabs(tabs=[
         bokeh.models.Panel(
             child=bokeh.layouts.column(
                 bokeh.models.Div(text="Navigate:"),
+                dataset_ui.layout,
                 controls.layout,
                 bokeh.models.Div(text="Compare:"),
                 bokeh.layouts.row(figure_drop),

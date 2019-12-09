@@ -1,3 +1,4 @@
+import pytest
 import unittest
 import unittest.mock
 import datetime as dt
@@ -35,62 +36,131 @@ def test_type_system_middleware():
     assert expect == result
 
 
-class TestDatabaseMiddleware(unittest.TestCase):
-    def setUp(self):
-        self.database = db.Database.connect(":memory:")
-        self.controls = db.Controls(self.database)
-        self.store = redux.Store(db.reducer, middlewares=[self.controls])
-
-    def tearDown(self):
-        self.database.close()
-
-    def test_state_change_given_dropdown_message(self):
-        action = db.set_value("pressure", "1000")
-        self.store.dispatch(action)
-        result = self.store.state
-        expect = {"pressure": 1000.}
-        self.assertEqual(expect, result)
-
-    def test_set_initial_time(self):
-        initial = dt.datetime(2019, 1, 1)
-        valid = dt.datetime(2019, 1, 1, 3)
-        self.database.insert_file_name("file.nc", initial)
-        self.database.insert_time("file.nc", "variable", valid, 0)
-        action = db.set_value("initial_time", "2019-01-01 00:00:00")
-        initial_state={
-            "pattern": "file.nc",
-            "variable": "variable"}
-        store = redux.Store(
-            db.reducer,
-            initial_state=initial_state,
-            middlewares=[self.controls])
-        store.dispatch(action)
-        result = store.state
-        expect = {
-            "pattern": "file.nc",
-            "variable": "variable",
-            "initial_time": str(initial),
-            "valid_times": [str(valid)]
-        }
-        self.assertEqual(expect, result)
-
-    def test_set_pattern(self):
-        initial = dt.datetime(2019, 1, 1)
-        valid = dt.datetime(2019, 1, 1, 3)
-        self.database.insert_file_name("file.nc", initial)
-        self.database.insert_time("file.nc", "variable", valid, 0)
-        action = db.set_value("pattern", "file.nc")
-        self.store.dispatch(action)
-        result = self.store.state
-        expect = {
-            "pattern": "file.nc",
-            "variables": ["variable"],
-            "initial_times": [str(initial)]
-        }
-        self.assertEqual(expect, result)
+@pytest.fixture()
+def database():
+    obj = db.Database.connect(":memory:")
+    yield obj
+    obj.close()
 
 
-class TestControls(unittest.TestCase):
+def test_variables(database):
+    database.insert_file_name("file.nc", "2019-01-01 00:00:00")
+    database.insert_time("file.nc", "variable", "2019-01-01 12:00:00", 0)
+    assert database.variables() == ["variable"]
+
+
+def test_pressures(database):
+    database.insert_file_name("file.nc", "2019-01-01 00:00:00")
+    database.insert_pressure("file.nc", "air_temperature", 1000, 0)
+    database.insert_pressure("file.nc", "relative_humidity", 750, 0)
+    assert database.pressures(variable="relative_humidity") == [750]
+
+
+def test_valid_times(database):
+    database.insert_file_name("file.nc", "2019-01-01 00:00:00")
+    database.insert_time("file.nc", "air_temperature", "2019-01-01 12:00:00", 0)
+    database.insert_time("file.nc", "relative_humidity", "2019-01-01 13:00:00", 0)
+    assert database.valid_times(variable="relative_humidity") == ["2019-01-01 13:00:00"]
+
+
+def test_initial_times(database):
+    database.insert_file_name("a.nc", "2019-01-01 00:00:00")
+    database.insert_file_name("b.nc", "2019-01-02 00:00:00")
+    assert database.initial_times(pattern="b.nc") == ["2019-01-02 00:00:00"]
+
+
+def test_navigator(database):
+    mapping = {"Label": "*a.nc"}
+
+    # Database (in-memory) to simulate navigation
+    file_name = "a.nc"
+    database.insert_file_name(file_name, "2019-01-01 00:00:00")
+    variables = {
+            "air_temperature": {
+                "time": ["2019-01-01 03:00:00", "2019-01-01 06:00:00"],
+                "pressure": [1000, 950]},
+            "relative_humidity": {
+                "time": ["2019-01-01 03:15:00"],
+                "pressure": [500]},
+    }
+    for variable, dims in variables.items():
+        for time in dims["time"]:
+            database.insert_time(file_name, variable, time, 0)
+        for pressure in dims["pressure"]:
+            database.insert_pressure(file_name, variable, pressure, 0)
+
+    file_name = "b.nc"
+    database.insert_file_name(file_name, "2019-01-01 00:00:00")
+    database.insert_time(file_name, "mslp", "2019-01-02 12:00:00", 0)
+
+    navigator = db.Navigator(database, mapping)
+
+    # Navigation middleware API
+    assert navigator.variables("Label") == ["air_temperature", "relative_humidity"]
+    assert navigator.initial_times("Label") == ["2019-01-01 00:00:00"]
+    assert navigator.valid_times(
+            "Label", "air_temperature", "2019-01-01 00:00:00") == [
+            "2019-01-01 03:00:00", "2019-01-01 06:00:00"]
+    assert navigator.valid_times(
+            "Label", "air_temperature", "2019-01-01 06:00:00") == []
+    assert set(navigator.pressures(
+        "Label", "air_temperature", "2019-01-01 00:00:00")) == set([1000., 950.])
+    assert set(navigator.pressures(
+        "Label", "air_temperature", "2019-01-01 06:00:00")) == set([])
+
+
+def test_state_change_given_dropdown_message(database):
+    navigator = db.Navigator(database, {})
+    store = redux.Store(db.reducer, middlewares=[db.Middleware(navigator)])
+    store.dispatch(db.set_value("pressure", "1000"))
+    assert store.state["pressure"] == 1000.
+
+
+def test_set_initial_time(database):
+    # Create in-memory database
+    variable = "variable"
+    initial_time = dt.datetime(2019, 1, 1)
+    valid_time = dt.datetime(2019, 1, 1, 3)
+    database.insert_file_name("file.nc", initial_time)
+    database.insert_time("file.nc", variable, valid_time, 0)
+
+    # Create Store using middleware and navigator
+    navigator = db.Navigator(database, {"Label": "file.nc"})
+    middleware = db.Middleware(navigator)
+    initial_state={
+        "label": "Label",
+        "variable": variable}
+    store = redux.Store(
+        db.reducer,
+        initial_state=initial_state,
+        middlewares=[middleware])
+    action = db.set_value("initial_time", "2019-01-01 00:00:00")
+    store.dispatch(action)
+
+    assert store.state["label"] == "Label"
+    assert store.state["variable"] == variable
+    assert store.state["initial_time"] == str(initial_time)
+    assert store.state["valid_times"] == [str(valid_time)]
+
+
+def test_set_label(database):
+    file_name = "file.nc"
+    variable = "variable"
+    initial_time = dt.datetime(2019, 1, 1)
+    valid_time = dt.datetime(2019, 1, 1, 3)
+    database.insert_file_name(file_name, initial_time)
+    database.insert_time(file_name, variable, valid_time, 0)
+
+    navigator = db.Navigator(database, {"Label": file_name})
+    store = redux.Store(db.reducer, middlewares=[db.Middleware(navigator)])
+    store.dispatch(db.set_value("label", "Label"))
+
+    assert store.state["label"] == "Label"
+    assert store.state["variables"] == [variable]
+    assert store.state["initial_times"] == [str(initial_time)]
+
+
+class TestMiddleware(unittest.TestCase):
     def setUp(self):
         self.database = db.Database.connect(":memory:")
 
@@ -112,7 +182,7 @@ class TestControls(unittest.TestCase):
             initial_state={"pressures": [pressure]},
             middlewares=[
                 db.next_previous,
-                db.Controls(self.database)])
+                db.Middleware(self.database)])
         view = db.ControlView()
         view.subscribe(store.dispatch)
         view.on_next('pressure', 'pressures')()
@@ -129,7 +199,7 @@ class TestControls(unittest.TestCase):
             middlewares=[
                 db.InverseCoordinate("pressure"),
                 db.next_previous,
-                db.Controls(self.database)
+                db.Middleware(self.database)
             ])
         view = db.ControlView()
         view.subscribe(store.dispatch)
@@ -150,7 +220,7 @@ class TestControls(unittest.TestCase):
             middlewares=[
                 db.InverseCoordinate("pressure"),
                 db.next_previous,
-                db.Controls(self.database)
+                db.Middleware(self.database)
             ])
         view = db.ControlView()
         view.subscribe(store.dispatch)

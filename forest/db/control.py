@@ -122,33 +122,34 @@ State.__ne__ = state_ne
 
 
 @export
-def initial_state(navigator, pattern=None):
+def initial_state(navigator, label):
     """Find initial state given navigator"""
     state = {}
-    state["pattern"] = pattern
-    variables = navigator.variables(pattern)
+    state["label"] = label
+    variables = navigator.variables(label)
     state["variables"] = variables
     if len(variables) == 0:
         return state
     variable = variables[0]
     state["variable"] = variable
-    initial_times = navigator.initial_times(pattern, variable)
+    # initial_times = navigator.initial_times(label, variable)
+    initial_times = navigator.initial_times(label)
     state["initial_times"] = initial_times
     if len(initial_times) == 0:
         return state
     initial_time = max(initial_times)
     state["initial_time"] = initial_time
     valid_times = navigator.valid_times(
-        variable=variable,
-        pattern=pattern,
-        initial_time=initial_time)
+            label,
+            variable,
+            initial_time)
     state["valid_times"] = valid_times
     if len(valid_times) > 0:
         state["valid_time"] = min(valid_times)
     pressures = navigator.pressures(
-            variable=variable,
-            pattern=pattern,
-            initial_time=initial_time)
+            label,
+            variable,
+            initial_time)
     pressures = list(reversed(sorted(pressures)))
     state["pressures"] = pressures
     if len(pressures) > 0:
@@ -260,19 +261,41 @@ def previous_item(items, item):
 
 
 @export
-class Navigator(object):
-    """Interface for navigation menu system"""
-    def variables(self, pattern):
-        return ['air_temperature']
+class Navigator:
+    """Database navigation protocol
 
-    def initial_times(self, pattern):
-        return ['2019-01-01 00:00:00']
+    .. note:: :class:`forest.db.Database` does not support search by label
 
-    def valid_times(self, pattern, variable, initial_time):
-        return ['2019-01-01 12:00:00']
+    :param database: instance of forest.db.Database
+    :param glob_patterns: dict that maps label to SQL query pattern
+    """
+    # Note: Explicit keyword args passed to Database methods since
+    #       they support arbitrary keyword combinations
+    def __init__(self, database, glob_patterns):
+        self.database = database
+        self.glob_patterns = glob_patterns
 
-    def pressures(self, pattern, variable, initial_time):
-        return [750.]
+    def variables(self, label):
+        pattern = self.glob_patterns[label]
+        return self.database.variables(pattern=pattern)
+
+    def initial_times(self, label):
+        pattern = self.glob_patterns[label]
+        return self.database.initial_times(pattern=pattern)
+
+    def valid_times(self, label, variable, initial_time):
+        pattern = self.glob_patterns[label]
+        return self.database.valid_times(
+                pattern=pattern,
+                variable=variable,
+                initial_time=initial_time)
+
+    def pressures(self, label, variable, initial_time):
+        pattern = self.glob_patterns[label]
+        return self.database.pressures(
+                pattern=pattern,
+                variable=variable,
+                initial_time=initial_time)
 
 
 @export
@@ -292,7 +315,8 @@ class Converter(object):
 
 
 @export
-class Controls(object):
+class Middleware(object):
+    """Navigation middleware"""
     def __init__(self, navigator):
         self.navigator = navigator
 
@@ -307,43 +331,48 @@ class Controls(object):
                 except ValueError:
                     print("{} is not a float".format(value))
                 return next_dispatch(set_value(key, value))
-            elif key == "pattern":
-                variables = self.navigator.variables(pattern=value)
-                initial_times = self.navigator.initial_times(pattern=value)
+            elif key == "label":
+                # TODO: Use label only here
+                label = action["payload"]["value"]
+                variables = self.navigator.variables(label)
+                initial_times = self.navigator.initial_times(label)
                 initial_times = list(reversed(initial_times))
                 next_dispatch(action)
                 next_dispatch(set_value("variables", variables))
                 next_dispatch(set_value("initial_times", initial_times))
                 return
             elif key == "variable":
-                for attr in ["pattern", "initial_time"]:
+                for attr in ["label", "initial_time"]:
                     if attr not in store.state:
                         return next_dispatch(action)
-                pattern = store.state["pattern"]
+                label = store.state["label"]
                 variable = value
                 initial_time = store.state["initial_time"]
                 valid_times = self.navigator.valid_times(
-                    pattern=pattern,
-                    variable=variable,
-                    initial_time=initial_time)
+                    label,
+                    variable,
+                    initial_time)
                 valid_times = sorted(set(valid_times))
                 pressures = self.navigator.pressures(
-                    pattern=pattern,
-                    variable=variable,
-                    initial_time=initial_time)
+                    label,
+                    variable,
+                    initial_time)
                 pressures = list(reversed(pressures))
                 next_dispatch(action)
                 next_dispatch(set_value("valid_times", valid_times))
                 next_dispatch(set_value("pressures", pressures))
                 return
             elif key == "initial_time":
-                for attr in ["pattern", "variable"]:
+                for attr in ["label", "variable"]:
                     if attr not in store.state:
                         return next_dispatch(action)
+                label = store.state["label"]
+                variable = store.state["variable"]
+                initial_time = value
                 valid_times = self.navigator.valid_times(
-                    pattern=store.state["pattern"],
-                    variable=store.state["variable"],
-                    initial_time=value)
+                    label,
+                    variable,
+                    initial_time)
                 valid_times = sorted(set(valid_times))
                 next_dispatch(action)
                 next_dispatch(set_value("valid_times", valid_times))
@@ -357,8 +386,6 @@ class ControlView(Observable):
         dropdown_width = 180
         button_width = 75
         self.dropdowns = {
-            "pattern": bokeh.models.Dropdown(
-                label="Model/observation"),
             "variable": bokeh.models.Dropdown(
                 label="Variable"),
             "initial_time": bokeh.models.Dropdown(
@@ -398,7 +425,6 @@ class ControlView(Observable):
                 self.dropdowns[key],
                 self.buttons[key]["next"])
         self.layout = bokeh.layouts.column(
-            self.dropdowns["pattern"],
             self.dropdowns["variable"],
             self.rows["initial_time"],
             self.rows["valid_time"],
@@ -424,7 +450,6 @@ class ControlView(Observable):
         """Configure dropdown menus"""
         assert isinstance(state, dict), "Only support dict"
         for key, items_key in [
-                ("pattern", "patterns"),
                 ("variable", "variables"),
                 ("initial_time", "initial_times"),
                 ("valid_time", "valid_times"),
@@ -436,8 +461,6 @@ class ControlView(Observable):
                 disabled = len(values) == 0
                 if key == "pressure":
                     menu = [(self.hpa(p), str(p)) for p in values]
-                elif key == "pattern":
-                    menu = state["patterns"]
                 else:
                     menu = self.menu(values)
                 self.dropdowns[key].menu = menu
@@ -445,11 +468,6 @@ class ControlView(Observable):
             if key in self.buttons:
                 self.buttons[key]["next"].disabled = disabled
                 self.buttons[key]["previous"].disabled = disabled
-
-        if ("pattern" in state) and ("patterns" in state):
-            for _, pattern in state["patterns"]:
-                if pattern == state["pattern"]:
-                    self.dropdowns["pattern"].value = pattern
 
         for key in [
                 "variable",

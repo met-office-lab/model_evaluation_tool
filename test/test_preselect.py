@@ -46,14 +46,16 @@ class TestInitialState(unittest.TestCase):
         path = "file.nc"
         variable = "relative_humidity"
         self.database.insert_variable(path, variable)
-        state = db.initial_state(self.database, pattern="*.nc")
+        navigator = db.Navigator(self.database, {"label": "*.nc"})
+        state = db.initial_state(navigator, "label")
         result = state["variable"]
         expect = variable
         self.assertEqual(expect, result)
 
     def test_initial_state(self):
         self.make_database()
-        state = db.initial_state(self.database)
+        navigator = db.Navigator(self.database, {"label": "*.nc"})
+        state = db.initial_state(navigator, "label")
         self.assertEqual(state["initial_times"], [
             "2019-01-01 00:00:00",
             "2019-01-01 12:00:00",
