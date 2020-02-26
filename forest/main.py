@@ -81,6 +81,26 @@ def main(argv=None):
 
     figure_row = layers.FigureRow(figures)
 
+    # Connect axis change events
+    source = bokeh.models.ColumnDataSource(dict(width=[]))
+    custom_js = bokeh.models.CustomJS(args=dict(source=source, figure=figure), code="""
+        let width = figure.x_range.end - figure.x_range.start;
+        source.stream({width: [width]}, rollover=10)
+        source.change.emit()
+    """)
+    figure.x_range.js_on_change("start", custom_js)
+    def on_stream(attr, old, new):
+        import cartopy
+        from forest.components import tiled_image
+        view_width = new["width"][-1]
+        map_width = (
+            max(cartopy.crs.Mercator.GOOGLE.x_limits) -
+            min(cartopy.crs.Mercator.GOOGLE.x_limits))
+        level = tiled_image.level(map_width, view_width)
+        print(level)
+
+    source.on_change("data", on_stream)
+
     color_mapper = bokeh.models.LinearColorMapper(
             low=0,
             high=1,
@@ -109,7 +129,8 @@ def main(argv=None):
         elif isinstance(loader, data.GPM):
             viewer = view.GPMView(loader, color_mapper)
         elif isinstance(loader, satellite.EIDA50):
-            viewer = view.EIDA50(loader, color_mapper)
+            # viewer = view.EIDA50(loader, color_mapper)
+            viewer = forest.components.TiledImage(loader, color_mapper)
         elif isinstance(loader, nearcast.NearCast):
             viewer = view.NearCast(loader, color_mapper)
             viewer.set_hover_properties(nearcast.NEARCAST_TOOLTIPS)
@@ -126,7 +147,8 @@ def main(argv=None):
 
     image_sources = []
     for name, viewer in viewers.items():
-        if isinstance(viewer, (view.UMView, view.GPMView, view.EIDA50)):
+        if isinstance(viewer, (view.UMView, view.GPMView, view.EIDA50,
+                               forest.components.TiledImage)):
             image_sources.append(viewer.source)
 
     # Lakes

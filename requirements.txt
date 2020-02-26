@@ -5,3 +5,4 @@ intake-esm
 pygrib
 libwebp=1.0.2  # Pin to prevent Travis issue
 xarray
+datashader

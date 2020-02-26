@@ -100,6 +100,11 @@ let triggerHiddenButton = function() {
 
 oldLog = console.log;
 console.log = function(message) {
+    if (typeof message.localeCompare === 'undefined') {
+        // Non-string message
+        oldLog(message);
+        return
+    }
     if (message.localeCompare('Bokeh items were rendered successfully') == 0) {
         console.log = oldLog;
         reattachRoots();

@@ -39,15 +39,19 @@ class EIDA50(object):
     def latitudes(self):
         return self.cache["latitude"]
 
-    def image(self, valid_time):
-        path, itime = self.locator.find(valid_time)
-        return self.load_image(path, itime)
-
-    def load_image(self, path, itime):
-        lons = self.longitudes
-        lats = self.latitudes
+    def values(self, path, itime):
         with netCDF4.Dataset(path) as dataset:
             values = dataset.variables["data"][itime]
+        return values
+
+    def image(self, valid_time):
+        path, itime = self.locator.find(valid_time)
+        values = self.values(path, itime)
+        return self.load_image(values)
+
+    def load_image(self, values):
+        lons = self.longitudes
+        lats = self.latitudes
         fraction = 0.25
         lons, lats, values = coarsify(
                 lons, lats, values, fraction)

@@ -321,7 +321,7 @@ class SourceLimits(Observable):
         for source in self.sources:
             if len(source.data["image"]) == 0:
                 continue
-            images.append(source.data["image"][0])
+            images += source.data["image"]
         if len(images) > 0:
             low = np.min([np.min(x) for x in images])
             high = np.max([np.max(x) for x in images])
