@@ -363,8 +363,8 @@ def test_index(items, item, expect):
 
 
 @pytest.mark.parametrize("items,item,error", [
-    ([], 0, ValueError),
-    ([1], 0, ValueError),
+    ([], 0, db.control.IndexNotFound),
+    ([1], 0, db.control.IndexNotFound),
 ])
 def test_index_raises_value_error(items, item, error):
     with pytest.raises(error):

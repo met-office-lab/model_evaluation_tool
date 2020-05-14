@@ -2,6 +2,7 @@
 import copy
 import datetime as dt
 import numpy as np
+import pandas as pd
 import bokeh.models
 import bokeh.layouts
 from collections import namedtuple
@@ -83,6 +84,24 @@ def previous_value(item_key, items_key):
     return dict(kind=PREVIOUS_VALUE, payload=locals())
 
 
+def is_set(action, key):
+    """Helper to detect set_valid_time action"""
+    return (
+        (action["kind"] == SET_VALUE) and
+        (action["payload"]["key"] == key)
+    )
+
+
+def set_valid_times(times):
+    """Helper to make action creation simpler"""
+    return set_value("valid_times", times)
+
+
+def set_valid_time(time):
+    """Helper to make action creation simpler"""
+    return set_value("valid_time", time)
+
+
 State = namedtuple("State", (
     "pattern",
     "patterns",
@@ -117,7 +136,11 @@ def time_array_equal(x, y):
         return False
     elif (len(x) == 0) or (len(y) == 0):
         return x == y
-    return np.all(_vto_datetime(x) == _vto_datetime(y))
+    try:
+        return np.all(_vto_datetime(x) == _vto_datetime(y))
+    except TypeError:
+        # NOTE: Needed for EarthNetworks DatetimeIndex
+        return np.all(pd.to_datetime(x) == pd.to_datetime(y))
 
 def equal_value(a, b):
     if (a is None) and (b is None):
@@ -250,20 +273,31 @@ def next_previous(store, action):
                 value = max(items)
             else:
                 value = min(items)
-        yield set_value(item_key, value)
+        if value is not None:
+            yield set_value(item_key, value)
     else:
         yield action
 
 
+class IndexNotFound(Exception):
+    pass
+
+
 def next_item(items, item):
     items = list(sorted(items))
-    i = _index(items, item)
+    try:
+        i = _index(items, item)
+    except IndexNotFound:
+        return None
     return items[(i + 1) % len(items)]
 
 
 def previous_item(items, item):
     items = list(sorted(items))
-    i = _index(items, item)
+    try:
+        i = _index(items, item)
+    except IndexNotFound:
+        return None
     return items[i - 1]
 
 
@@ -274,16 +308,15 @@ def _index(items: List[Any], item: Any):
     try:
         return items.index(item)
     except ValueError as e:
-        # Index of first float within tolerance
         try:
+            # Index of first float within tolerance
             if any(np.isclose(items, item)):
                 return np.isclose(items, item).argmax()
             else:
-                raise e
+                raise IndexNotFound(f"{item} not in {items}")
         except TypeError:
-            print(type(item), type(items), type(items[0]))
-            msg = "{} not in {}".format(item, items)
-            raise NotFound(msg)
+            # No suitable index found
+            raise IndexNotFound(f"{item} not in {items}")
 
 
 @export
@@ -366,7 +399,7 @@ class Controls(object):
             pattern=pattern,
             variable=variable,
             initial_time=initial_time)
-        valid_times = sorted(set(valid_times))
+        # valid_times = sorted(set(valid_times))
         pressures = self.navigator.pressures(
             pattern=pattern,
             variable=variable,
@@ -388,7 +421,7 @@ class Controls(object):
             pattern=store.state["pattern"],
             variable=store.state["variable"],
             initial_time=initial_time)
-        valid_times = sorted(set(valid_times))
+        # valid_times = sorted(set(valid_times))
         yield action
         yield set_value("valid_times", valid_times)
 

@@ -5,10 +5,13 @@
 __pycache__
 kubeconfig
 *.swp
+package-lock.json
 node_modules
 *.egg-info
 .coverage
 doc/build
+build
+dist
 apps/ux-improvements/static/css
 apps/ux-improvements/static/js
 apps/ux-improvements/node_modules

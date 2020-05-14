@@ -1,5 +1,6 @@
 """Dimension information relating to datasets"""
 import copy
+from forest.actions import SET_ENCODED_TIMES
 
 
 SET_VARIABLES = "DIMENSION_SET_VARIABLES"
@@ -21,4 +22,7 @@ def reducer(state, action):
             node[key] = node.get(key, {})
             node = node[key]
         node["variables"] = action["payload"]["values"]
+    elif kind == SET_ENCODED_TIMES:
+        # TODO: Find a better place in the state to store RL encoded times
+        state["encoded"] = action["payload"]
     return state

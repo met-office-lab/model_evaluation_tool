@@ -5,6 +5,8 @@ import unittest
 
 import iris
 import numpy as np
+import pandas as pd
+import pandas.testing as pdt
 
 from forest import util
 
@@ -77,3 +79,62 @@ def test_parse_date(regex, fmt, path, expect):
 def test_replace(given, expect):
     result = util.replace(given, year=2021)
     assert result == expect
+
+
+@pytest.mark.parametrize("times, start, frequency, length", [
+    pytest.param(
+        [], [], [], [],
+        id="empty"),
+    pytest.param(
+        ["2020-01-01"],
+        ["2020-01-01"],
+        [dt.timedelta(0)],
+        [0],
+        id="single value"),
+    pytest.param(
+        ["2020-01-01", "2020-01-01"],
+        ["2020-01-01"],
+        [dt.timedelta(0)],
+        [1],
+        id="same value twice"),
+    pytest.param(
+        ["2020-01-01", "2020-01-02"],
+        ["2020-01-01"],
+        [dt.timedelta(days=1)],
+        [1],
+        id="two different values"),
+    pytest.param(
+        ["2020-01-01", "2020-01-02", "2020-01-04"],
+        ["2020-01-01", "2020-01-02"],
+        [dt.timedelta(days=1), dt.timedelta(days=2)],
+        [1, 1],
+        id="two short periods"),
+    pytest.param(
+        ["2020-01-01", "2020-01-02", "2020-01-03", "2020-01-04"],
+        ["2020-01-01"],
+        [dt.timedelta(days=1)],
+        [3],
+        id="one long period"),
+])
+def test_run_length_encode(times, start, frequency, length):
+    result = util.run_length_encode(times)
+    expect = pd.DataFrame({
+        "start": pd.to_datetime(start),
+        "frequency": frequency,
+        "length": length
+    })
+    pdt.assert_frame_equal(expect, result, check_dtype=False)
+
+
+@pytest.mark.parametrize("x,index,value,length", [
+    pytest.param([], [], [], []),
+    pytest.param([1, 1, 1], [0], [1], [3]),
+])
+def test_find_runs(x, index, value, length):
+    result = util.find_runs(x)
+    expect = pd.DataFrame({
+        "index": index,
+        "value": value,
+        "length": length
+    })
+    pdt.assert_frame_equal(expect, result, check_dtype=False)

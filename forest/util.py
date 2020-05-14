@@ -78,10 +78,17 @@ def to_datetime(d):
     elif isinstance(d, cftime.DatetimeGregorian):
         return dt.datetime(d.year, d.month, d.day, d.hour, d.minute, d.second)
     elif isinstance(d, str):
-        try:
-            return dt.datetime.strptime(d, "%Y-%m-%d %H:%M:%S")
-        except ValueError:
-            return dt.datetime.strptime(d, "%Y-%m-%dT%H:%M:%S")
+        errors = []
+        for fmt in (
+                "%Y-%m-%d %H:%M:%S",
+                "%Y-%m-%dT%H:%M:%S",
+                "%Y-%m-%dT%H:%M:%SZ"):
+            try:
+                return dt.datetime.strptime(d, fmt)
+            except ValueError as e:
+                errors.append(e)
+                continue
+        raise Exception(errors)
     elif isinstance(d, np.datetime64):
         return d.astype(dt.datetime)
     else:
@@ -132,3 +139,65 @@ def find_fmt(text):
             return fmt
         except ValueError:
             continue
+
+
+def run_length_encode(times, sort=True):
+    """Compression algorithm to reduce volume of datetimes"""
+    if len(times) == 0:
+        return pd.DataFrame({
+            "start": np.array([], dtype='datetime64[ns]'),
+            "frequency": [],
+            "length": [],
+        })
+    elif len(times) == 1:
+        return pd.DataFrame({
+            "start": np.asarray(times, dtype='datetime64[ns]'),
+            "frequency": np.array([0], dtype='timedelta64[ns]'),
+            "length": [0]
+        })
+    else:
+        if isinstance(times, list):
+            times = pd.DatetimeIndex(times)
+
+        if sort:
+            times = times.sort_values()
+        gaps = np.diff(times)
+        runs = find_runs(gaps)
+
+        start = times[runs['index']]
+        frequency = runs['value']
+        length = runs['length']
+        return pd.DataFrame({
+            "start": start,
+            "frequency": frequency,
+            "length": length
+        })
+
+
+def find_runs(array_1d):
+    """Find repeated sequences of values"""
+    if isinstance(array_1d, list):
+        array_1d = np.asarray(array_1d)
+    if len(array_1d) == 0:
+        return pd.DataFrame({
+            "index": np.array([], dtype=np.int),
+            "value": np.array([], dtype=array_1d.dtype),
+            "length": np.array([], dtype=np.int),
+        })
+
+    # Bit map of unequal values
+    bitmap = np.zeros(len(array_1d), dtype=np.bool)
+    bitmap[0] = True  # Boundary condition
+    bitmap[1:] = array_1d[1:] != array_1d[:-1]
+
+    # Convert boundaries of runs to array index
+    index = np.flatnonzero(bitmap)
+
+    # Return values, repeat length and index
+    value = array_1d[bitmap]
+    length = np.diff(np.append(index, len(array_1d)))
+    return pd.DataFrame({
+        "index": index,
+        "value": value,
+        "length": length,
+    })
