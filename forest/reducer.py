@@ -21,4 +21,5 @@ reducer = redux.combine_reducers(
             colors.limits_reducer,
             presets.reducer,
             tiles.reducer,
-            dimension.reducer)
+            dimension.reducer,
+            )

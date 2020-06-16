@@ -29,6 +29,7 @@ from forest.observe import Observable
 
 SET_POSITION = "SET_POSITION"
 
+
 def reducer(state, action):
     """Screen specific reducer
 
