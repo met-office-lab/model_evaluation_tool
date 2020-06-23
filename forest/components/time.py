@@ -5,6 +5,7 @@ from forest.util import to_datetime as _to_datetime
 import forest.db.control
 import bokeh.plotting
 import numpy as np
+from forest.components import animate
 
 
 class _Axis:
@@ -43,15 +44,65 @@ class _Axis:
         return str(_to_datetime(t))
 
 
+def play_js(source):
+    """Play algorithm"""
+    return bokeh.models.CustomJS(args=dict(source=source), code="""
+        // Simple JS animation
+        console.log('Play');
+        window.playing = true;
+        var interval = 500;
+        let nextFrame = function() {
+            if (window.playing) {
+                if (source.selected.indices.length > 0) {
+                    let i = source.selected.indices[0];
+                    let n = source.data['x'].length;
+                    source.selected.indices = [(i + 1) % n];
+                    source.change.emit();
+                }
+                setTimeout(nextFrame, interval);
+            }
+        };
+        setTimeout(nextFrame, interval);
+    """)
 
-class TimeUI(Observable):
-    """Allow navigation through time"""
+
+def play_js_limits(source, limits):
+    """Play algorithm"""
+    return bokeh.models.CustomJS(args=dict(source=source,
+                                           limits=limits), code="""
+        console.log('Play');
+        window.playing = true;
+        var interval = 500;
+        let nextFrame = function() {
+            if (window.playing) {
+                if (limits.get_length() == 0) {
+                    return
+                }
+                let start = limits.data["start"][0]
+                let end = limits.data["end"][0]
+                if (source.selected.indices.length > 0) {
+                    // Choose next index
+                    let i = source.selected.indices[0];
+                    let x = source.data["x"];
+                    for (let j=1; j<x.length; j++) {
+                        let k = (i + j) % x.length;
+                        if ((x[k] >= start) && (x[k] <= end)) {
+                            source.selected.indices = [k];
+                            source.change.emit();
+                            break
+                        }
+                    }
+                }
+                setTimeout(nextFrame, interval);
+            }
+        };
+        setTimeout(nextFrame, interval);
+    """)
+
+
+class TimeUI:
+    """Parent class for UI components"""
     def __init__(self):
-        self._axis = _Axis()
-        self.source = bokeh.models.ColumnDataSource(dict(
-            x=[],
-            y=[],
-        ))
         self.figure = bokeh.plotting.figure(
             plot_height=80,
             plot_width=800,
@@ -63,19 +114,6 @@ class TimeUI(Observable):
         active_scroll = bokeh.models.WheelZoomTool(dimensions='width')
         self.figure.add_tools(active_scroll)
         self.figure.toolbar.active_scroll = active_scroll
-
-        renderer = self.figure.square(x="x", y="y", source=self.source,
-                      fill_color='black',
-                      line_color='black')
-        renderer.selection_glyph = bokeh.models.Square(
-            fill_color="red",
-            line_color="red")
-        renderer.nonselection_glyph = bokeh.models.Square(
-            fill_color="black",
-            line_color="black",
-            fill_alpha=0.2,
-            line_alpha=0.2,
-        )
 
         # X-axis formatter breakpoints
         formatter = self.figure.xaxis[0].formatter
@@ -91,6 +129,50 @@ class TimeUI(Observable):
         self.figure.xaxis.fixed_location = 0
         self.figure.title.text = "Select time"
         self.figure.title.align = "center"
+
+        # Column data sources
+        self.source = bokeh.models.ColumnDataSource(dict(
+            x=[],
+            y=[],
+        ))
+        self.limits = bokeh.models.ColumnDataSource({
+            "start": [],
+            "end": []
+        })
+        if False:
+            play_custom_js = play_js(self.source)
+        else:
+            play_custom_js = play_js_limits(self.source, self.limits)
+
+        self.components = {
+            "timeui": _TimeUI(self.figure, self.source, play_custom_js),
+            "view": animate.View(self.figure, self.limits)
+        }
+        self.layout = self.components["timeui"].layout
+
+    def connect(self, store):
+        self.components["timeui"].connect(store)
+        self.components["view"].connect(store)
+
+
+class _TimeUI(Observable):
+    """Allow navigation through time"""
+    def __init__(self, figure, source, play_custom_js):
+        self._axis = _Axis()
+        self.figure = figure
+        self.source = source
+        renderer = self.figure.square(x="x", y="y", source=self.source,
+                                      fill_color='black',
+                                      line_color='black')
+        renderer.selection_glyph = bokeh.models.Square(
+            fill_color="red",
+            line_color="red")
+        renderer.nonselection_glyph = bokeh.models.Square(
+            fill_color="black",
+            line_color="black",
+            fill_alpha=0.2,
+            line_alpha=0.2,
+        )
 
         # Hover interaction
         hover_tool = bokeh.models.HoverTool(tooltips=None)
@@ -145,23 +227,6 @@ class TimeUI(Observable):
 
         self.source.selected.on_change('indices', self.on_selected)
 
-        # Band to highlight valid times
-        self.band_source = bokeh.models.ColumnDataSource(dict(
-            base=[-1, 1],
-            upper=[0, 0],
-            lower=[0, 0]
-        ))
-        band = bokeh.models.Band(
-            dimension='width',
-            base='base',
-            lower='lower',
-            upper='upper',
-            fill_color='grey',
-            fill_alpha=0.2,
-            source=self.band_source
-        )
-        self.figure.add_layout(band)
-
         # Controls
         self.buttons = {
             "play": bokeh.models.Button(label="Play",
@@ -177,25 +242,7 @@ class TimeUI(Observable):
         }
 
         # Play JS
-        custom_js = bokeh.models.CustomJS(args=dict(source=self.source), code="""
-            // Simple JS animation
-            console.log('Play');
-            window.playing = true;
-            var interval = 500;
-            let nextFrame = function() {
-                if (window.playing) {
-                    if (source.selected.indices.length > 0) {
-                        let i = source.selected.indices[0];
-                        let n = source.data['x'].length;
-                        source.selected.indices = [(i + 1) % n];
-                        source.change.emit();
-                    }
-                    setTimeout(nextFrame, interval);
-                }
-            };
-            setTimeout(nextFrame, interval);
-        """)
-        self.buttons["play"].js_on_click(custom_js)
+        self.buttons["play"].js_on_click(play_custom_js)
 
         # Pause behaviour
         custom_js = bokeh.models.CustomJS(args=dict(source=self.source), code="""
@@ -249,7 +296,6 @@ class TimeUI(Observable):
         if len(new) > 0:
             i = new[0]
             value = self._axis.value(i)
-            print(value, self.source.data["x"][i])
             self.notify(forest.db.control.set_value('valid_time', value))
 
     def connect(self, store):
@@ -290,16 +336,3 @@ class TimeUI(Observable):
         # Title
         time = self._axis.datetimes[index]
         self.figure.title.text = f"{time:%A %d %B %Y %H:%M}"
-
-        # Band
-        if len(times) > 0:
-            upper = [max(times), max(times)]
-            lower = [min(times), min(times)]
-        else:
-            upper = [0, 0]
-            lower = [0, 0]
-        self.band_source.data = dict(
-            base=[-1, 1],
-            upper=upper,
-            lower=lower
-        )

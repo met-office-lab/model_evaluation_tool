@@ -24,7 +24,7 @@ from forest import (
         parse_args)
 import forest.app
 import forest.components
-from forest.components import tiles, html_ready
+from forest.components import animate, tiles, html_ready
 import forest.config as cfg
 import forest.middlewares as mws
 from forest.db.util import autolabel
@@ -265,6 +265,10 @@ def main(argv=None):
     modal = forest.components.Modal(view=view)
     modal.connect(store)
 
+    # Client-side animation controls
+    component = animate.Controls()
+    app.add_component(component)
+
     # Connect components to Store
     app.connect(store)
 
@@ -299,6 +303,14 @@ def main(argv=None):
     if config.use_web_map_tiles:
         store.dispatch(tiles.set_tile(tiles.STAMEN_TERRAIN))
         store.dispatch(tiles.set_label_visible(True))
+
+    # Set default animation window
+    valid_times = store.state.get("valid_times", [])
+    if len(valid_times) > 0:
+        action = animate.set_animate(min(valid_times),
+                                     max(valid_times),
+                                     "pause")
+        store.dispatch(action.to_dict())
 
     # Organise controls/settings
     layouts = {}

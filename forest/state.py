@@ -59,6 +59,14 @@ class Bokeh:
 
 
 @dataclass
+class Animate:
+    """Settings to control client-side animations"""
+    start: str = ""
+    end: str = ""
+    mode: str = "pause"
+
+
+@dataclass
 class Limits:
     """
     Color map extent, high and low represent upper and lower limits
@@ -259,6 +267,7 @@ class State:
     :type bokeh: Bokeh
     """
 
+    animate: Animate = field(default_factory=Animate)
     pattern: str = ""
     patterns: list = field(default_factory=list)
     variable: str = ""
@@ -282,6 +291,8 @@ class State:
         """Type-checking"""
         if isinstance(self.bokeh, dict):
             self.bokeh = Bokeh(**self.bokeh)
+        if isinstance(self.animate, dict):
+            self.animate = Animate(**self.animate)
         if isinstance(self.colorbar, dict):
             self.colorbar = Colorbar(**self.colorbar)
         if isinstance(self.tile, dict):

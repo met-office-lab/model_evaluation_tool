@@ -13,6 +13,7 @@
 
 {% block postamble %}
 <link rel="stylesheet" href="forest/static/style.css" type="text/css" media="all">
+<link rel="stylesheet" href="forest/static/font-awesome/css/all.css" type="text/css" media="all">
 <script src="forest/static/script.js" charset="utf-8"></script>
 <script src="forest/static/forest-min.js" charset="utf-8"></script>
 {% endblock %}
@@ -52,6 +53,21 @@
         {{ safe_embed('figures') }}
     </div>
 
+    <!-- movable div -->
+    <div id="animate" class="animate" style="display: none;">
+        <div style="display: flex; flex-direction: row;">
+            <div id="animate-drag" class="animate-drag" style="flex: 1 1 0px;">
+                <span class="dot"></span>
+                <span class="dot"></span>
+                <span class="dot"></span>
+            </div>
+            <div id="animate-close" style="flex: 0 0 12px;">
+                <i class="fa fa-window-close" aria-hidden="true" style="float: right; cursor: pointer;"></i>
+            </div>
+        </div>
+            {{ safe_embed('animate') }}
+    </div>
+
     <!-- Layout footer widgets -->
     <div id="colorbar-parent" class="colorbar-parent">
         <div id="colorbar" class="colorbar">
@@ -59,8 +75,13 @@
         </div>
     </div>
     <footer>
-        <div id="time" class="time">
+        <div id="time" class="time" style="display:flex; flex-direction:row;">
+            <div class="animate-settings" style="flex: 0 0 12px;">
+                <button id="animate-open" class="animate-settings-button" type="button"><i class="fa fa-cog" aria-hidden="true"></i></button>
+            </div>
+            <div style="flex: 1 1 0px;">
             {{ safe_embed('time') }}
+            </div>
         </div>
     </footer>
 
@@ -72,6 +93,68 @@
             </div>
         {% endfor %}
     {% endfor %}
+
+    <script charset="utf-8">
+        // Movable element behaviour
+        let dragElement = function(els) {
+            var current = {x: 0, y: 0}
+            var last = {x: 0, y: 0}
+
+            let moveDragElement = function(e) {
+                e = e || window.event;
+                e.preventDefault();
+
+                // Calculate new cursor position
+                current.x = last.x - e.clientX;
+                current.y = last.y - e.clientY;
+                last.x = e.clientX;
+                last.y = e.clientY;
+
+                // Set element's new position
+                let el = els.moveElement;
+                el.style.top = (el.offsetTop - current.y) + "px";
+                el.style.left = (el.offsetLeft - current.x) + "px";
+            }
+
+            let closeDragElement = function() {
+                document.onmouseup = null;
+                document.onmousemove = null;
+            }
+
+            els.grabElement.onmousedown = function(e) {
+                e = e || window.event;
+                e.preventDefault();
+
+                last.x = e.clientX;
+                last.y = e.clientY;
+                document.onmouseup = closeDragElement;
+                document.onmousemove = moveDragElement;
+            }
+        }
+
+        dragElement({
+           moveElement: document.getElementById("animate"),
+           grabElement: document.getElementById("animate-drag"),
+        })
+
+        // Wire up close button
+        let elContainer = document.getElementById("animate")
+        let elClose = document.getElementById("animate-close")
+        let elOpen = document.getElementById("animate-open")
+        elClose.onclick = function() {
+            elContainer.style.display = "none"
+            elOpen.classList.remove("active")
+        }
+        elOpen.onclick = function() {
+            if (elContainer.style.display === "block") {
+                elContainer.style.display = "none"
+                elOpen.classList.remove("active")
+            } else {
+                elContainer.style.display = "block"
+                elOpen.classList.add("active")
+            }
+        }
+    </script>
 
     <script>
 // Re-attach roots if WebSocket request served by different machine
