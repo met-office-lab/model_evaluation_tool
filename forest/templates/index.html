@@ -80,6 +80,18 @@
     </footer>
     </div>
 
+    <!-- Cover to use during app spin up -->
+    <div id="loader-cover" class="loader-cover">
+        <div class="loader-container abs-middle-middle">
+            <div><img src="forest/static/forest-logo-small.png" alt=""></div>
+            <div class="loader-animation-container">
+                <div class="loader-item loader-0"></div>
+                <div class="loader-item loader-1"></div>
+                <div class="loader-item loader-2"></div>
+            </div>
+        </div>
+    </div>
+
     <!-- Bokeh document roots -->
     {% for doc in docs %}
         {% for root in doc.roots %}

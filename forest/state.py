@@ -299,6 +299,7 @@ class State:
     presets: Presets = field(default_factory=Presets)
     borders: Borders = field(default_factory=Borders)
     bokeh: Bokeh = field(default_factory=Bokeh)
+    startup_complete: bool =  False
 
     def __post_init__(self):
         """Type-checking"""

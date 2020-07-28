@@ -55,6 +55,12 @@ h3 {
     left: 50%;
     transform: translate(-50%);
 }
+.abs-middle-middle {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
 .abs-bottom-middle {
     position: absolute;
     bottom: 0;
@@ -86,6 +92,7 @@ h3 {
     color: rgba(0, 0, 0, 0.6);
     background-color: white;
     border-radius: 50%;
+    border: 1px solid #e6e6e6;
 }
 .settings-icon:hover {
     color: black;
@@ -146,6 +153,7 @@ footer {
 .panel {
     background-color: white;
     border-radius: 4px;
+    border: 1px solid #e6e6e6;
     margin: 10px;
     padding: 10px;
     overflow-x: hidden;
@@ -154,10 +162,12 @@ footer {
 .panel-open {
     width: 370px;
     padding: 10px;
+    border-width: 1px;
 }
 .panel-close {
     width: 0;
     padding: 0;
+    border-width: 0;
 }
 
 #figures {
@@ -195,4 +205,57 @@ footer {
 /* Modal component */
 .bk.custom {
     font-size: 1.4rem;
+}
+
+
+/* App loader component */
+.loader-cover {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    background-color: white;
+}
+.loader-cover-hide {
+    display: none;
+}
+.loader-container {
+    background-color: white;
+    border-radius: 10px;
+}
+.loader-animation-container {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    margin-bottom: 20px;
+}
+.loader-item {
+  background-color: #007AA9;
+  border-radius: 50%;
+  width: 2rem;
+  height: 2rem;
+  margin: 2px;
+  opacity: 0;
+  -webkit-animation: grow 1.4s infinite linear;
+  animation: grow 1.4s infinite linear;
+}
+.loader-1 {
+  -webkit-animation-delay: 0.16s;
+  animation-delay: 0.16s;
+}
+.loader-2 {
+  -webkit-animation-delay: 0.32s;
+  animation-delay: 0.32s;
+}
+@keyframes grow {
+    0% {
+        -webkit-transform: scale(0);
+        transform: scale(0);
+    }
+    50% {
+        opacity: 1;
+        background-color: #66B170;
+    }
 }

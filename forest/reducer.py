@@ -51,6 +51,20 @@ def borders_reducer(state, action):
     return state.to_dict()
 
 
+def startup_reducer(state, action):
+    if isinstance(action, dict):
+        try:
+            action = actions.Action.from_dict(action)
+        except TypeError:
+            # TODO: Support Action throughout codebase
+            return state
+    if isinstance(state, dict):
+        state = forest.state.State.from_dict(state)
+    if action.kind == actions.STARTUP_COMPLETE:
+        state.startup_complete = True
+    return state.to_dict()
+
+
 reducer = redux.combine_reducers(
             db.reducer,
             layers.reducer,
@@ -63,4 +77,5 @@ reducer = redux.combine_reducers(
             dimension.reducer,
             html_ready.reducer,
             state_reducer,
-            borders_reducer)
+            borders_reducer,
+            startup_reducer)

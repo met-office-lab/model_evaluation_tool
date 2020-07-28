@@ -3,6 +3,7 @@ import bokeh.models
 import bokeh.events
 import bokeh.colors
 import os
+import datetime as dt
 from forest import _profile as profile
 from forest import (
         drivers,
@@ -66,6 +67,7 @@ def configure(argv=None):
 
 
 def main(argv=None):
+    print(f"start: {dt.datetime.now().isoformat()}")
     config = configure(argv=argv)
 
     # Feature toggles
@@ -113,6 +115,12 @@ def main(argv=None):
     navigator = navigate.Navigator(sub_navigators)
 
     middlewares = [
+        mws.Echo("action: {action}"),
+        StartupTasks(config,
+                     sub_navigators,
+                     navigator,
+                     datasets,
+                     label_to_pattern),
         keys.navigate,
         db.InverseCoordinate("pressure"),
         db.next_previous,
@@ -123,7 +131,7 @@ def main(argv=None):
         presets.middleware,
         layers.middleware,
         navigator,
-        mws.echo,
+        mws.Echo("middleware action: {action}"),
     ]
     store = redux.Store(
         forest.reducer,
@@ -224,42 +232,6 @@ def main(argv=None):
     # Connect components to Store
     app.connect(store)
 
-    # Set initial state
-    store.dispatch(forest.actions.set_state(config.state).to_dict())
-
-    # Pre-select menu choices (if any)
-    for pattern, _ in sub_navigators.items():
-        state = db.initial_state(navigator, pattern=pattern)
-        store.dispatch(forest.actions.update_state(state).to_dict())
-        break
-
-    # Set default time series visibility
-    store.dispatch(tools.on_toggle_tool("time_series", False))
-
-    # Set default profile visibility
-    store.dispatch(tools.on_toggle_tool("profile", False))
-
-    # Set top-level navigation
-    store.dispatch(db.set_value("patterns", config.patterns))
-
-    # Pre-select first map_view layer
-    for label, dataset in datasets.items():
-        pattern = label_to_pattern[label]
-        for variable in navigator.variables(pattern):
-            spec = {"label": label,
-                    "dataset": label,
-                    "variable": variable,
-                    "active": [0]}
-            store.dispatch(forest.layers.save_layer(0, spec))
-            break
-        break
-
-    # Set variable dimensions (needed by modal dialogue)
-    for label, dataset in datasets.items():
-        pattern = label_to_pattern[label]
-        values = navigator.variables(pattern)
-        store.dispatch(dimension.set_variables(label, values))
-
     # Organise controls/settings
     layouts = {}
     layouts["controls"] = []
@@ -349,6 +321,8 @@ def main(argv=None):
     # Add HTML ready support
     obj = html_ready.HTMLReady(key_press.hidden_button)
     obj.connect(store)
+    obj = LoadingCover(key_press.hidden_button)
+    obj.connect(store)
 
     document = bokeh.plotting.curdoc()
     document.title = "FOREST"
@@ -366,6 +340,85 @@ def main(argv=None):
     document.add_root(figure_row.layout)
     document.add_root(key_press.hidden_button)
     document.add_root(modal.layout)
+
+
+class LoadingCover:
+    def __init__(self, hidden_button):
+        self.hidden_button = hidden_button
+        custom_js = bokeh.models.CustomJS(code="""
+            let el = document.getElementById("loader-cover")
+            el.classList.add("display-none")
+        """)
+        self.hidden_button.js_on_change("label", custom_js)
+
+    def connect(self, store):
+        store.add_subscriber(self.render)
+
+    def render(self, state):
+        if isinstance(state, dict):
+            state = forest.state.State.from_dict(state)
+        if state.startup_complete:
+            self.hidden_button.label = "Done"
+
+
+class StartupTasks:
+    """Separate potentially expensive I/O from app render"""
+    def __init__(self, config, sub_navigators, navigator, datasets,
+                 label_to_pattern):
+        self.config = config
+        self.sub_navigators = sub_navigators
+        self.navigator = navigator
+        self.datasets = datasets
+        self.label_to_pattern = label_to_pattern
+
+    def __call__(self, store, action):
+        if isinstance(action, dict):
+            try:
+                action = forest.actions.Action.from_dict(action)
+            except TypeError:
+                yield action
+                return
+
+        if action.kind == forest.actions.HTML_LOADED:
+            # Set initial state
+            yield forest.actions.set_state(self.config.state).to_dict()
+
+            # Pre-select menu choices (if any)
+            for pattern, _ in self.sub_navigators.items():
+                state = db.initial_state(self.navigator, pattern=pattern)
+                yield forest.actions.update_state(state).to_dict()
+                break
+
+            # Set default time series visibility
+            yield tools.on_toggle_tool("time_series", False)
+
+            # Set default profile visibility
+            yield tools.on_toggle_tool("profile", False)
+
+            # Set top-level navigation
+            yield db.set_value("patterns", self.config.patterns)
+
+            # Pre-select first map_view layer
+            for label, dataset in self.datasets.items():
+                pattern = self.label_to_pattern[label]
+                for variable in self.navigator.variables(pattern):
+                    spec = {"label": label,
+                            "dataset": label,
+                            "variable": variable,
+                            "active": [0]}
+                    yield forest.layers.save_layer(0, spec)
+                    break
+                break
+
+            # Set variable dimensions (needed by modal dialogue)
+            for label, dataset in self.datasets.items():
+                pattern = self.label_to_pattern[label]
+                values = self.navigator.variables(pattern)
+                yield dimension.set_variables(label, values)
+
+            yield forest.actions.startup_complete().to_dict()
+        else:
+            yield action.to_dict()
 
 
 class Navbar:

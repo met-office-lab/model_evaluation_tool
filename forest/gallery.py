@@ -49,8 +49,9 @@ class Gallery:
         # Group layers by dataset
         layers = defaultdict(list)
         for uid, settings in sorted(state.layers.index.items()):
-            key = settings["dataset"]
-            layers[key].append(uid)
+            if "dataset" in settings:
+                key = settings["dataset"]
+                layers[key].append(uid)
 
         # Apply layer settings to views
         for key, scaling_group in self.scaling_groups.items():
@@ -58,5 +59,3 @@ class Gallery:
             scaling_group.scale_to(len(uids))
             for view, uid in zip(scaling_group.instances, uids):
                 view.render_id(state, uid)
-
-        print(layers)
